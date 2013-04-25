@@ -48,12 +48,16 @@ void update_matrix_2d(float *matrix) {
 }
 
 void update_matrix_3d(
-    float *matrix, float x, float y, float z, float rx, float ry)
+    float *matrix, float x, float y, float z, float rx, float ry, int multiplier)
 {
     float a[16];
     float b[16];
     int width, height;
     glfwGetWindowSize(&width, &height);
+    if (multiplier) {
+        width *= multiplier;
+        height *= multiplier;
+    }
     glViewport(0, 0, width, height);
     float aspect = (float)width / height;
     mat_identity(a);
@@ -68,12 +72,35 @@ void update_matrix_3d(
         mat_ortho(b, -size * aspect, size * aspect, -size, size, -256, 256);
     }
     else {
-        mat_perspective(b, 65.0, aspect, 0.1, 1024.0);
+        mat_perspective(b, 65.0, aspect, 0.1, 192);
     }
     mat_multiply(a, b, a);
     for (int i = 0; i < 16; i++) {
         matrix[i] = a[i];
     }
+}
+
+void make_rect_buffer(GLuint *position_buffer, GLuint *uv_buffer) {
+    int width, height;
+    glfwGetWindowSize(&width, &height);
+    float x = width;
+    float y = height;
+    float position_data[] = {
+        0, 0, x, 0, 0, y,
+        0, y, x, 0, x, y
+    };
+    x = x / 4096 * 2;
+    y = y / 4096 * 2;
+    float uv_data[] = {
+        0, 0, x, 0, 0, y,
+        0, y, x, 0, x, y
+    };
+    *position_buffer = make_buffer(
+        GL_ARRAY_BUFFER, sizeof(position_data), position_data
+    );
+    *uv_buffer = make_buffer(
+        GL_ARRAY_BUFFER, sizeof(uv_data), uv_data
+    );
 }
 
 GLuint make_line_buffer() {
@@ -459,6 +486,23 @@ void draw_lines(GLuint buffer, GLuint position_loc, int size, int count) {
     glDisableVertexAttribArray(position_loc);
 }
 
+void draw_triangles(
+    GLuint position_buffer, GLuint position_loc,
+    GLuint uv_buffer, GLuint uv_loc,
+    int size, int count)
+{
+    glEnableVertexAttribArray(position_loc);
+    glEnableVertexAttribArray(uv_loc);
+    glBindBuffer(GL_ARRAY_BUFFER, position_buffer);
+    glVertexAttribPointer(position_loc, size, GL_FLOAT, GL_FALSE, 0, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, uv_buffer);
+    glVertexAttribPointer(uv_loc, 2, GL_FLOAT, GL_FALSE, 0, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glDrawArrays(GL_TRIANGLES, 0, count);
+    glDisableVertexAttribArray(position_loc);
+    glDisableVertexAttribArray(uv_loc);
+}
+
 void ensure_chunks(Chunk *chunks, int *chunk_count, int p, int q, int force) {
     int count = *chunk_count;
     for (int i = 0; i < count; i++) {
@@ -618,6 +662,37 @@ int main(int argc, char **argv) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glfwLoadTexture2D("texture.tga", 0);
 
+    GLuint color_texture;
+    glGenTextures(1, &color_texture);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, color_texture);
+    glTexImage2D(
+        GL_TEXTURE_2D, 0, GL_RGB,
+        4096, 4096,
+        0, GL_RGB, GL_FLOAT, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    GLuint depth_texture;
+    glGenTextures(1, &depth_texture);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, depth_texture);
+    glTexImage2D(
+        GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
+        4096, 4096,
+        0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    GLuint frame_buffer;
+    glGenFramebuffers(1, &frame_buffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer);
+    glFramebufferTexture(
+        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, color_texture, 0);
+    glFramebufferTexture(
+        GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depth_texture, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     GLuint block_program = load_program(
         "shaders/block_vertex.glsl", "shaders/block_fragment.glsl");
     GLuint matrix_loc = glGetUniformLocation(block_program, "matrix");
@@ -627,6 +702,14 @@ int main(int argc, char **argv) {
     GLuint position_loc = glGetAttribLocation(block_program, "position");
     GLuint normal_loc = glGetAttribLocation(block_program, "normal");
     GLuint uv_loc = glGetAttribLocation(block_program, "uv");
+
+    GLuint dof_program = load_program(
+        "shaders/dof_vertex.glsl", "shaders/dof_fragment.glsl");
+    GLuint dof_matrix_loc = glGetUniformLocation(dof_program, "matrix");
+    GLuint dof_color_texture_loc = glGetUniformLocation(dof_program, "color_texture");
+    GLuint dof_depth_texture_loc = glGetUniformLocation(dof_program, "depth_texture");
+    GLuint dof_position_loc = glGetAttribLocation(dof_program, "position");
+    GLuint dof_uv_loc = glGetAttribLocation(dof_program, "uv");
 
     GLuint line_program = load_program(
         "shaders/line_vertex.glsl", "shaders/line_fragment.glsl");
@@ -747,10 +830,12 @@ int main(int argc, char **argv) {
         int q = floorf(roundf(z) / CHUNK_SIZE);
         ensure_chunks(chunks, &chunk_count, p, q, 0);
 
-        update_matrix_3d(matrix, x, y, z, rx, ry);
+        glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_DEPTH_TEST);
 
         // render chunks
+        update_matrix_3d(matrix, x, y, z, rx, ry, 2);
         glUseProgram(block_program);
         glUniformMatrix4fv(matrix_loc, 1, GL_FALSE, matrix);
         glUniform3f(camera_loc, x, y, z);
@@ -767,9 +852,29 @@ int main(int argc, char **argv) {
             draw_chunk(chunk, position_loc, normal_loc, uv_loc);
         }
 
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glDisable(GL_DEPTH_TEST);
+
+        // perform dof
+        update_matrix_2d(matrix);
+        glUseProgram(dof_program);
+        glUniformMatrix4fv(dof_matrix_loc, 1, GL_FALSE, matrix);
+        glUniform1i(dof_color_texture_loc, 1);
+        glUniform1i(dof_depth_texture_loc, 2);
+        GLuint dof_position_buffer;
+        GLuint dof_uv_buffer;
+        make_rect_buffer(&dof_position_buffer, &dof_uv_buffer);
+        draw_triangles(
+            dof_position_buffer, dof_position_loc,
+            dof_uv_buffer, dof_uv_loc, 2, 6);
+        glDeleteBuffers(1, &dof_position_buffer);
+        glDeleteBuffers(1, &dof_uv_buffer);
+
         // render focused block wireframe
         int hx, hy, hz;
         if (hit_test(chunks, chunk_count, 0, x, y, z, rx, ry, &hx, &hy, &hz)) {
+            update_matrix_3d(matrix, x, y, z, rx, ry, 0);
             glUseProgram(line_program);
             glLineWidth(1);
             glEnable(GL_COLOR_LOGIC_OP);
@@ -780,9 +885,8 @@ int main(int argc, char **argv) {
             glDisable(GL_COLOR_LOGIC_OP);
         }
 
-        update_matrix_2d(matrix);
-
         // render crosshairs
+        update_matrix_2d(matrix);
         glUseProgram(line_program);
         glLineWidth(4);
         glEnable(GL_COLOR_LOGIC_OP);
