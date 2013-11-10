@@ -48,18 +48,18 @@ void update_matrix_2d(float *matrix) {
 }
 
 void update_matrix_3d(
-    float *matrix, float x, float y, float z, float rx, float ry)
+    float *matrix, double x, double y, double z, double rx, double ry)
 {
     float a[16];
     float b[16];
     int width, height;
     glfwGetWindowSize(window, &width, &height);
     glViewport(0, 0, width, height);
-    float aspect = (float)width / height;
+    double aspect = (double)width / height;
     mat_identity(a);
     mat_translate(b, -x, -y, -z);
     mat_multiply(a, b, a);
-    mat_rotate(b, cosf(rx), 0, sinf(rx), ry);
+    mat_rotate(b, cos(rx), 0, sin(rx), ry);
     mat_multiply(a, b, a);
     mat_rotate(b, 0, 1, 0, -rx);
     mat_multiply(a, b, a);
@@ -101,23 +101,23 @@ GLuint make_cube_buffer(float x, float y, float z, float n) {
     return buffer;
 }
 
-void get_sight_vector(float rx, float ry, float *vx, float *vy, float *vz) {
-    float m = cosf(ry);
-    *vx = cosf(rx - RADIANS(90)) * m;
-    *vy = sinf(ry);
-    *vz = sinf(rx - RADIANS(90)) * m;
+void get_sight_vector(double rx, double ry, double *vx, double *vy, double *vz) {
+    double m = cos(ry);
+    *vx = cos(rx - RADIANS(90)) * m;
+    *vy = sin(ry);
+    *vz = sin(rx - RADIANS(90)) * m;
 }
 
-void get_motion_vector(int flying, int sz, int sx, float rx, float ry,
-    float *vx, float *vy, float *vz) {
+void get_motion_vector(int flying, int sz, int sx, double rx, double ry,
+    double *vx, double *vy, double *vz) {
     *vx = 0; *vy = 0; *vz = 0;
     if (!sz && !sx) {
         return;
     }
-    float strafe = atan2f(sz, sx);
+    double strafe = atan2(sz, sx);
     if (flying) {
-        float m = cosf(ry);
-        float y = sinf(ry);
+        double m = cos(ry);
+        double y = sin(ry);
         if (sx) {
             y = 0;
             m = 1;
@@ -125,14 +125,14 @@ void get_motion_vector(int flying, int sz, int sx, float rx, float ry,
         if (sz > 0) {
             y = -y;
         }
-        *vx = cosf(rx + strafe) * m;
+        *vx = cos(rx + strafe) * m;
         *vy = y;
-        *vz = sinf(rx + strafe) * m;
+        *vz = sin(rx + strafe) * m;
     }
     else {
-        *vx = cosf(rx + strafe);
+        *vx = cos(rx + strafe);
         *vy = 0;
-        *vz = sinf(rx + strafe);
+        *vz = sin(rx + strafe);
     }
 }
 
@@ -171,12 +171,12 @@ int chunk_visible(Chunk *chunk, float *matrix) {
     return 0;
 }
 
-int highest_block(Chunk *chunks, int chunk_count, float x, float z) {
+int highest_block(Chunk *chunks, int chunk_count, double x, double z) {
     int result = -1;
-    int nx = roundf(x);
-    int nz = roundf(z);
-    int p = floorf(roundf(x) / CHUNK_SIZE);
-    int q = floorf(roundf(z) / CHUNK_SIZE);
+    int nx = round(x);
+    int nz = round(z);
+    int p = floor(round(x) / CHUNK_SIZE);
+    int q = floor(round(z) / CHUNK_SIZE);
     Chunk *chunk = find_chunk(chunks, chunk_count, p, q);
     if (chunk) {
         Map *map = &chunk->map;
@@ -190,9 +190,9 @@ int highest_block(Chunk *chunks, int chunk_count, float x, float z) {
 }
 
 int _hit_test(
-    Map *map, float max_distance, int previous,
-    float x, float y, float z,
-    float vx, float vy, float vz,
+    Map *map, double max_distance, int previous,
+    double x, double y, double z,
+    double vx, double vy, double vz,
     int *hx, int *hy, int *hz)
 {
     int m = 8;
@@ -200,9 +200,9 @@ int _hit_test(
     int py = 0;
     int pz = 0;
     for (int i = 0; i < max_distance * m; i++) {
-        int nx = roundf(x);
-        int ny = roundf(y);
-        int nz = roundf(z);
+        int nx = round(x);
+        int ny = round(y);
+        int nz = round(z);
         if (nx != px || ny != py || nz != pz) {
             if (map_get(map, nx, ny, nz)) {
                 if (previous) {
@@ -222,14 +222,14 @@ int _hit_test(
 
 int hit_test(
     Chunk *chunks, int chunk_count, int previous,
-    float x, float y, float z, float rx, float ry,
+    double x, double y, double z, double rx, double ry,
     int *bx, int *by, int *bz)
 {
     int result = 0;
-    float best = 0;
-    int p = floorf(roundf(x) / CHUNK_SIZE);
-    int q = floorf(roundf(z) / CHUNK_SIZE);
-    float vx, vy, vz;
+    double best = 0;
+    int p = floor(round(x) / CHUNK_SIZE);
+    int q = floor(round(z) / CHUNK_SIZE);
+    double vx, vy, vz;
     get_sight_vector(rx, ry, &vx, &vy, &vz);
     for (int i = 0; i < chunk_count; i++) {
         Chunk *chunk = chunks + i;
@@ -240,8 +240,8 @@ int hit_test(
         if (_hit_test(&chunk->map, 8, previous,
             x, y, z, vx, vy, vz, &hx, &hy, &hz))
         {
-            float d = sqrtf(
-                powf(hx - x, 2) + powf(hy - y, 2) + powf(hz - z, 2));
+            double d = sqrt(
+                pow(hx - x, 2) + pow(hy - y, 2) + pow(hz - z, 2));
             if (best == 0 || d < best) {
                 best = d;
                 *bx = hx; *by = hy; *bz = hz;
@@ -254,23 +254,23 @@ int hit_test(
 
 int collide(
     Chunk *chunks, int chunk_count,
-    int height, float *x, float *y, float *z)
+    int height, double *x, double *y, double *z)
 {
     int result = 0;
-    int p = floorf(roundf(*x) / CHUNK_SIZE);
-    int q = floorf(roundf(*z) / CHUNK_SIZE);
+    int p = floor(round(*x) / CHUNK_SIZE);
+    int q = floor(round(*z) / CHUNK_SIZE);
     Chunk *chunk = find_chunk(chunks, chunk_count, p, q);
     if (!chunk) {
         return result;
     }
     Map *map = &chunk->map;
-    int nx = roundf(*x);
-    int ny = roundf(*y);
-    int nz = roundf(*z);
-    float px = *x - nx;
-    float py = *y - ny;
-    float pz = *z - nz;
-    float pad = 0.25;
+    int nx = round(*x);
+    int ny = round(*y);
+    int nz = round(*z);
+    double px = *x - nx;
+    double py = *y - ny;
+    double pz = *z - nz;
+    double pad = 0.25;
     for (int dy = 0; dy < height; dy++) {
         if (px < -pad && map_get(map, nx - 1, ny - dy, nz)) {
             *x = nx - pad;
@@ -298,12 +298,12 @@ int collide(
 
 int player_intersects_block(
     int height,
-    float x, float y, float z,
+    double x, double y, double z,
     int hx, int hy, int hz)
 {
-    int nx = roundf(x);
-    int ny = roundf(y);
-    int nz = roundf(z);
+    int nx = round(x);
+    int ny = round(y);
+    int nz = round(z);
     for (int i = 0; i < height; i++) {
         if (nx == hx && ny - i == hy && nz == hz) {
             return 1;
@@ -645,12 +645,12 @@ int main(int argc, char **argv) {
 
     FPS fps = {0, 0};
     float matrix[16];
-    float x = (rand_double() - 0.5) * 10000;
-    float z = (rand_double() - 0.5) * 10000;
-    float y = 0;
-    float dy = 0;
-    float rx = 0;
-    float ry = 0;
+    double x = (rand_double() - 0.5) * 10000;
+    double z = (rand_double() - 0.5) * 10000;
+    double y = 0;
+    double dy = 0;
+    double rx = 0;
+    double ry = 0;
     double px = 0;
     double py = 0;
 
@@ -673,7 +673,7 @@ int main(int argc, char **argv) {
         if (exclusive && (px || py)) {
             double mx, my;
             glfwGetCursorPos(window, &mx, &my);
-            float m = 0.0025;
+            double m = 0.0025;
             rx += (mx - px) * m;
             ry -= (my - py) * m;
             if (rx < 0) {
@@ -726,11 +726,11 @@ int main(int argc, char **argv) {
         if (dy == 0 && glfwGetKey(window, GLFW_KEY_SPACE)) {
             dy = 8;
         }
-        float vx, vy, vz;
+        double vx, vy, vz;
         get_motion_vector(flying, sz, sx, rx, ry, &vx, &vy, &vz);
-        float speed = flying ? 20 : 5;
+        double speed = flying ? 20 : 5;
         int step = 8;
-        float ut = dt / step;
+        double ut = dt / step;
         vx = vx * ut * speed;
         vy = vy * ut * speed;
         vz = vz * ut * speed;

@@ -59,7 +59,7 @@ void db_close() {
     sqlite3_close(db);
 }
 
-void db_save_state(float x, float y, float z, float rx, float ry) {
+void db_save_state(double x, double y, double z, double rx, double ry) {
     static const char *query =
         "insert into state (x, y, z, rx, ry) values (?, ?, ?, ?, ?);";
     sqlite3_stmt *stmt;
@@ -74,7 +74,7 @@ void db_save_state(float x, float y, float z, float rx, float ry) {
     sqlite3_finalize(stmt);
 }
 
-int db_load_state(float *x, float *y, float *z, float *rx, float *ry) {
+int db_load_state(double *x, double *y, double *z, double *rx, double *ry) {
     static const char *query =
         "select x, y, z, rx, ry from state;";
     int result = 0;
